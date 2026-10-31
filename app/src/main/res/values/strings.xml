@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OmniVoice</string>
+    <string name="accessibility_description">Lets OmniVoice type your spoken words into the text box you are using in any app.</string>
+</resources>

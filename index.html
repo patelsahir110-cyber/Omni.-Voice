@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>OmniVoice Android — Floating Side Panel &amp; Notification Dictation</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root,
+    html[data-theme="light"] {
+      --bg-page: #f5f5f7;
+      --bg-header: rgba(255, 255, 255, 0.82);
+      --bg-card: #ffffff;
+      --bg-subtle: #f5f5f7;
+      --bg-input: #fbfbfd;
+      --bg-segmented: #e8e8ed;
+      --bg-seg-active: #ffffff;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-muted: #86868b;
+      --border-hairline: rgba(0, 0, 0, 0.08);
+      --border-strong: rgba(0, 0, 0, 0.18);
+      --accent-primary: #1d1d1f;
+      --accent-primary-fg: #ffffff;
+      --accent-hover: #333336;
+      --btn-secondary-bg: #f5f5f7;
+      --btn-secondary-hover: #e8e8ed;
+      --btn-secondary-text: #1d1d1f;
+      --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+      --seg-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      --panel-glass: rgba(255, 255, 255, 0.92);
+    }
+
+    html[data-theme="dark"] {
+      --bg-page: #000000;
+      --bg-header: rgba(18, 18, 20, 0.82);
+      --bg-card: #121214;
+      --bg-subtle: #1c1c1e;
+      --bg-input: #0a0a0c;
+      --bg-segmented: #1c1c1e;
+      --bg-seg-active: #2c2c2e;
+      --text-primary: #f5f5f7;
+      --text-secondary: #a1a1a6;
+      --text-muted: #6e6e73;
+      --border-hairline: rgba(255, 255, 255, 0.12);
+      --border-strong: rgba(255, 255, 255, 0.24);
+      --accent-primary: #f5f5f7;
+      --accent-primary-fg: #000000;
+      --accent-hover: #ffffff;
+      --btn-secondary-bg: #1c1c1e;
+      --btn-secondary-hover: #2c2c2e;
+      --btn-secondary-text: #f5f5f7;
+      --card-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(255, 255, 255, 0.05);
+      --seg-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+      --panel-glass: rgba(22, 22, 24, 0.92);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color 0.28s cubic-bezier(0.4, 0, 0.2, 1), color 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow-x: hidden;
+    }
+
+    .apple-header {
+      background-color: var(--bg-header);
+      border-bottom: 1px solid var(--border-hairline);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+    }
+
+    .apple-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--card-shadow);
+      border-radius: 22px;
+      transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .apple-glass-panel {
+      background-color: var(--panel-glass);
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+      backdrop-filter: saturate(180%) blur(24px);
+      -webkit-backdrop-filter: saturate(180%) blur(24px);
+    }
+
+    .apple-subtle {
+      background-color: var(--bg-subtle);
+      border: 1px solid var(--border-hairline);
+      border-radius: 14px;
+    }
+
+    .apple-input {
+      background-color: var(--bg-input);
+      border: 1px solid var(--border-hairline);
+      color: var(--text-primary);
+      border-radius: 14px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+    }
+
+    .apple-input:focus {
+      outline: none;
+      border-color: var(--border-strong);
+      box-shadow: 0 0 0 3px rgba(128, 128, 135, 0.15);
+    }
+
+    .apple-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .apple-segmented {
+      background-color: var(--bg-segmented);
+      border-radius: 14px;
+      padding: 4px;
+    }
+
+    .apple-seg-btn {
+      border-radius: 10px;
+      color: var(--text-secondary);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .apple-seg-btn.seg-active {
+      background-color: var(--bg-seg-active);
+      color: var(--text-primary);
+      box-shadow: var(--seg-shadow);
+    }
+
+    .apple-btn-primary {
+      background-color: var(--accent-primary);
+      color: var(--accent-primary-fg);
+      transition: transform 0.15s ease, background-color 0.2s ease, opacity 0.2s ease;
+    }
+
+    .apple-btn-primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .apple-btn-primary:active {
+      transform: scale(0.97);
+    }
+
+    .apple-btn-secondary {
+      background-color: var(--btn-secondary-bg);
+      color: var(--btn-secondary-text);
+      border: 1px solid var(--border-hairline);
+      transition: all 0.18s ease;
+    }
+
+    .apple-btn-secondary:hover {
+      background-color: var(--btn-secondary-hover);
+    }
+
+    .apple-btn-secondary:active {
+      transform: scale(0.98);
+    }
+
+    .text-sec { color: var(--text-secondary); }
+    .text-mut { color: var(--text-muted); }
+    .hairline-t { border-top: 1px solid var(--border-hairline); }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.96); opacity: 0.75; }
+      70% { transform: scale(1.22); opacity: 0; }
+      100% { transform: scale(1.22); opacity: 0; }
+    }
+    .mic-pulse {
+      background-color: #ff3b30 !important;
+      color: #ffffff !important;
+    }
+    .mic-pulse::before {
+      content: '';
+      position: absolute;
+      inset: -5px;
+      border-radius: 9999px;
+      background-color: #ff3b30;
+      z-index: -1;
+      animation: pulse-ring 1.5s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    }
+
+    @keyframes wave-bar {
+      0%, 100% { height: 5px; }
+      50% { height: 20px; }
+    }
+    .wave-active span {
+      animation: wave-bar 0.65s ease-in-out infinite;
+      background-color: #ff3b30 !important;
+    }
+    .wave-active span:nth-child(2) { animation-delay: 0.12s; }
+    .wave-active span:nth-child(3) { animation-delay: 0.24s; }
+    .wave-active span:nth-child(4) { animation-delay: 0.36s; }
+    .wave-active span:nth-child(5) { animation-delay: 0.18s; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- ANDROID PERSISTENT NOTIFICATION BAR (Appears when 1st Open activates Service) -->
+  <div id="androidNotifBar" class="bg-neutral-900 text-white border-b border-neutral-800 px-4 py-2 text-xs transition-all">
+    <div class="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="font-semibold">OmniVoice Android Service Active</span>
+        <span id="notifEngineBadge" class="px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 text-[11px]">Hybrid: Local + Internet</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="notifSpeakBtn" type="button" class="px-3 py-1 rounded-full bg-white text-black font-semibold text-[11px] hover:bg-neutral-200 transition">
+          🎙 Speak Now
+        </button>
+        <button id="notifStopBtn" type="button" class="px-3 py-1 rounded-full bg-neutral-800 text-rose-400 font-semibold text-[11px] hover:bg-neutral-700 transition">
+          ⏹ Stop All (2nd Open)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Apple Frosted Navigation Header -->
+  <header class="apple-header sticky top-0 z-30">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-full apple-btn-primary flex items-center justify-center shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-semibold tracking-tight leading-tight">OmniVoice</h1>
+            <span class="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full apple-subtle font-semibold text-sec">Android Side-Panel</span>
+          </div>
+          <p class="text-[11px] sm:text-xs text-sec">1st Tap Starts Side Panel • 2nd Tap Stops All</p>
+        </div>
+      </div>
+
+      <!-- Right Controls: White / Black Theme Switcher + Status Pill -->
+      <div class="flex items-center gap-2">
+        <div class="apple-segmented flex items-center">
+          <button id="themeLightBtn" type="button" class="apple-seg-btn seg-active px-2.5 py-1 text-xs font-medium flex items-center gap-1">
+            <span>☀</span>
+            <span class="hidden sm:inline">White</span>
+          </button>
+          <button id="themeDarkBtn" type="button" class="apple-seg-btn px-2.5 py-1 text-xs font-medium flex items-center gap-1">
+            <span>☾</span>
+            <span class="hidden sm:inline">Black</span>
+          </button>
+        </div>
+
+        <div id="statusBadge" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium apple-subtle">
+          <span id="statusDot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span id="statusText">Ready</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- FLOATING EDGE SIDE PANEL (DOCKED ON RIGHT EDGE OF SCREEN) -->
+  <div id="sidePanelContainer" class="fixed right-0 top-1/3 z-50 flex items-center transition-transform duration-300">
+    <!-- Edge Handle Tab (Always visible on screen edge when service is active) -->
+    <button
+      id="sidePanelHandleBtn"
+      type="button"
+      title="Tap to expand/collapse OmniVoice Side Panel"
+      class="apple-glass-panel rounded-l-2xl px-2.5 py-5 flex flex-col items-center gap-2 cursor-pointer shadow-xl border-r-0"
+    >
+      <span id="sideHandleDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+      </svg>
+      <span class="text-[10px] font-bold tracking-tighter uppercase" style="writing-mode: vertical-rl;">Voice</span>
+    </button>
+
+    <!-- Slide-Out Mini Side Panel Drawer -->
+    <div id="sidePanelDrawer" class="apple-glass-panel w-64 rounded-l-3xl p-4 flex flex-col gap-3 mr-1">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-xs font-bold tracking-tight">Side Panel Mic</span>
+          <p id="sidePanelModeText" class="text-[10px] text-sec">Auto (Local + Internet)</p>
+        </div>
+        <button id="collapseSidePanelBtn" type="button" class="apple-btn-secondary w-7 h-7 rounded-full text-xs flex items-center justify-center">
+          ›
+        </button>
+      </div>
+
+      <!-- Big 1-Tap Side Panel Mic Button -->
+      <button id="sidePanelMicBtn" type="button" class="apple-btn-primary relative py-3 px-4 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 shadow">
+        <span>🎙</span>
+        <span id="sidePanelMicLabel">Tap &amp; Speak Here</span>
+      </button>
+
+      <!-- Quick Simulate & Paste Buttons inside Side Panel -->
+      <div class="grid grid-cols-2 gap-1.5">
+        <button id="sidePanelSimBtn" type="button" class="apple-btn-secondary py-1.5 px-2 rounded-xl text-[11px] font-medium">
+          ⚡ Test Voice
+        </button>
+        <button id="sidePanelCopyBtn" type="button" class="apple-btn-secondary py-1.5 px-2 rounded-xl text-[11px] font-medium">
+          📋 Copy Last
+        </button>
+      </div>
+
+      <!-- Mini Live Preview inside Side Panel -->
+      <div id="sidePanelPreview" class="apple-subtle p-2 text-[11px] text-sec truncate">
+        Types directly into active box...
+      </div>
+
+      <button id="sidePanelShutdownBtn" type="button" class="py-1.5 px-3 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 text-[11px] font-semibold transition">
+        ⏹ Close All (2nd Open Stop)
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-5 sm:py-6 flex flex-col gap-5">
+
+    <!-- NEW: 1st Open / 2nd Open Android App Lifecycle Controller Card -->
+    <section class="apple-card p-4 sm:p-5 flex flex-col gap-3.5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-sec">Android One-Tap App Behavior</span>
+            <span id="serviceStateBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-500">1st Open: Side Panel ON</span>
+          </div>
+          <p class="text-xs text-sec mt-0.5">
+            Tap the app icon <strong>1st time</strong> to launch the floating <strong>Side Panel + Notification</strong> (no need to reopen the app). Tap <strong>2nd time</strong> to stop everything.
+          </p>
+        </div>
+
+        <!-- Simulated Android Home App Icon Button (1st Tap = Start Side Panel, 2nd Tap = Stop All) -->
+        <button id="androidAppIconBtn" type="button" class="apple-btn-primary px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-sm">
+          <span>📱</span>
+          <span id="androidAppIconLabel">Tap App Icon (2nd Time: Stop All)</span>
+        </button>
+      </div>
+
+      <!-- Hybrid Engine Mode Selector (Local Offline + Internet Cloud) -->
+      <div class="pt-3 hairline-t grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <button id="engineHybridBtn" type="button" class="apple-seg-btn seg-active apple-subtle py-2 px-3 text-xs font-semibold text-left flex items-center justify-between">
+          <span>⚡ Hybrid (Local + Net)</span>
+          <span class="text-[10px] text-emerald-500 font-bold">AUTO</span>
+        </button>
+        <button id="engineLocalBtn" type="button" class="apple-seg-btn apple-subtle py-2 px-3 text-xs font-semibold text-left flex items-center justify-between">
+          <span>📴 Local Offline AI</span>
+          <span class="text-[10px] text-sec">On-Device</span>
+        </button>
+        <button id="engineOnlineBtn" type="button" class="apple-seg-btn apple-subtle py-2 px-3 text-xs font-semibold text-left flex items-center justify-between">
+          <span>🌐 Internet Cloud</span>
+          <span class="text-[10px] text-sec">Google API</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Browser Compatibility Banner (Hidden if supported) -->
+    <div id="compatBanner" class="hidden apple-card p-4 text-xs sm:text-sm flex items-start justify-between gap-3">
+      <div class="text-sec">
+        <strong class="font-semibold" style="color: var(--text-primary);">Android &amp; Browser Testing Note:</strong>
+        Your current preview frame restricts live microphone hardware. Open in Chrome on Android for live mic capture, or tap <strong>⚡ Simulate Voice</strong> (or use the floating Side Panel on the right edge) to test instant dictation.
+      </div>
+      <button id="dismissCompatBtn" type="button" class="apple-btn-secondary px-3 py-1.5 rounded-full text-xs font-medium shrink-0">Got it</button>
+    </div>
+
+    <!-- Apple Segmented Mode Switcher Tabs -->
+    <div class="apple-segmented grid grid-cols-2">
+      <button id="tabPadBtn" type="button" class="apple-seg-btn py-2.5 px-4 text-xs sm:text-sm font-semibold">
+        🎙️ Dictation Pad
+      </button>
+      <button id="tabSandboxBtn" type="button" class="apple-seg-btn seg-active py-2.5 px-4 text-xs sm:text-sm font-semibold">
+        🌐 Test on Any Input Box
+      </button>
+    </div>
+
+    <!-- Studio Controls Card: Language, Punctuation, Auto-Copy & Microphone -->
+    <section class="apple-card p-4 sm:p-6 flex flex-col gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <!-- Language Selector -->
+        <div>
+          <label for="langSelect" class="block text-[11px] uppercase tracking-wider font-semibold text-sec mb-1.5">Recognition Language</label>
+          <select id="langSelect" class="apple-input w-full px-3.5 py-2.5 text-sm font-medium cursor-pointer">
+            <option value="en-IN">English (India)</option>
+            <option value="en-US">English (US)</option>
+            <option value="mr-IN">Marathi (मराठी)</option>
+            <option value="hi-IN">Hindi (हिन्दी)</option>
+            <option value="en-GB">English (UK)</option>
+            <option value="es-ES">Spanish (Español)</option>
+            <option value="fr-FR">French (Français)</option>
+            <option value="de-DE">German (Deutsch)</option>
+          </select>
+        </div>
+
+        <!-- Toggles Row -->
+        <div class="flex flex-col justify-end gap-2">
+          <label class="apple-subtle flex items-center justify-between px-3.5 py-2 cursor-pointer">
+            <span class="text-xs sm:text-sm font-medium">Spoken Punctuation <span class="text-sec text-xs">("comma", "period")</span></span>
+            <input id="punctToggle" type="checkbox" checked class="w-4 h-4 accent-black dark:accent-white rounded" />
+          </label>
+          <label class="apple-subtle flex items-center justify-between px-3.5 py-2 cursor-pointer">
+            <span class="text-xs sm:text-sm font-medium">Auto-Copy on Pause <span class="text-sec text-xs">(Paste anywhere)</span></span>
+            <input id="autoCopyToggle" type="checkbox" checked class="w-4 h-4 accent-black dark:accent-white rounded" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Central Microphone Action Bar -->
+      <div class="pt-3 hairline-t flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <button id="micToggleBtn" type="button" class="apple-btn-primary relative z-10 inline-flex items-center gap-2.5 px-6 py-3 rounded-full font-semibold text-sm sm:text-base shadow-sm">
+            <svg id="micIcon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+            </svg>
+            <span id="micBtnLabel">Tap to Speak</span>
+          </button>
+
+          <!-- Minimalist Audio Waveform Visualizer -->
+          <div id="waveIndicator" class="flex items-center gap-1 h-6 px-2">
+            <span class="w-1 h-1.5 bg-neutral-400 rounded-full transition-all"></span>
+            <span class="w-1 h-1.5 bg-neutral-400 rounded-full transition-all"></span>
+            <span class="w-1 h-1.5 bg-neutral-400 rounded-full transition-all"></span>
+            <span class="w-1 h-1.5 bg-neutral-400 rounded-full transition-all"></span>
+            <span class="w-1 h-1.5 bg-neutral-400 rounded-full transition-all"></span>
+          </div>
+        </div>
+
+        <!-- Secondary Studio Actions -->
+        <div class="flex items-center gap-2">
+          <button id="simulateBtn" type="button" class="apple-btn-secondary px-3.5 py-2 rounded-full text-xs font-medium">
+            ⚡ Simulate Voice
+          </button>
+          <button id="undoPhraseBtn" type="button" class="apple-btn-secondary px-3.5 py-2 rounded-full text-xs font-medium">
+            ↩ Undo Last
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Interim Speech Preview Banner -->
+      <div id="interimBox" class="apple-subtle px-4 py-2.5 text-xs sm:text-sm min-h-[2.5rem] flex items-center justify-between gap-2">
+        <span id="interimText" class="truncate text-sec italic">Use the floating right Side Panel or tap "Tap to Speak"...</span>
+        <span id="activeTargetBadge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full apple-card shrink-0">Target: Web Search</span>
+      </div>
+    </section>
+
+    <!-- VIEW 1: Main Dictation Pad -->
+    <section id="viewPad" class="hidden apple-card p-4 sm:p-6 flex flex-col gap-3.5">
+      <div class="flex items-center justify-between text-xs text-sec">
+        <span class="font-semibold uppercase tracking-wider text-[11px]">Dictation Canvas</span>
+        <div class="flex items-center gap-3.5 font-medium">
+          <span><strong id="wordCount" style="color: var(--text-primary);">0</strong> words</span>
+          <span><strong id="charCount" style="color: var(--text-primary);">0</strong> chars</span>
+        </div>
+      </div>
+
+      <textarea
+        id="mainEditor"
+        rows="6"
+        placeholder="Start speaking or tap anywhere to place your cursor..."
+        class="apple-input w-full p-4 text-sm sm:text-base resize-y leading-relaxed"
+      ></textarea>
+
+      <!-- Quick Punctuation & Formatting Bar -->
+      <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
+        <span class="text-[11px] font-medium text-sec mr-1 shrink-0">Quick Insert:</span>
+        <button type="button" data-insert=". " class="quick-insert-btn apple-btn-secondary px-3 py-1 rounded-full text-xs font-medium shrink-0">. Period</button>
+        <button type="button" data-insert=", " class="quick-insert-btn apple-btn-secondary px-3 py-1 rounded-full text-xs font-medium shrink-0">, Comma</button>
+        <button type="button" data-insert="? " class="quick-insert-btn apple-btn-secondary px-3 py-1 rounded-full text-xs font-medium shrink-0">? Question</button>
+        <button type="button" data-insert="! " class="quick-insert-btn apple-btn-secondary px-3 py-1 rounded-full text-xs font-medium shrink-0">! Exclaim</button>
+        <button type="button" data-insert="&#10;" class="quick-insert-btn apple-btn-secondary px-3 py-1 rounded-full text-xs font-medium shrink-0">↵ New Line</button>
+      </div>
+
+      <!-- Action Buttons: Copy, Share to Android Apps, WhatsApp, Save Snippet, Clear -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 hairline-t">
+        <button id="copyBtn" type="button" class="apple-btn-primary col-span-2 sm:col-span-1 py-2.5 px-4 rounded-full font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5">
+          📋 Copy Text
+        </button>
+        <button id="shareAndroidBtn" type="button" class="apple-btn-secondary py-2.5 px-3.5 rounded-full font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5">
+          📤 Share to App
+        </button>
+        <button id="whatsappBtn" type="button" class="apple-btn-secondary py-2.5 px-3.5 rounded-full font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5">
+          💬 WhatsApp
+        </button>
+        <button id="saveSnippetBtn" type="button" class="apple-btn-secondary py-2.5 px-3.5 rounded-full font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5">
+          💾 Save Note
+        </button>
+        <button id="clearBtn" type="button" class="apple-btn-secondary py-2.5 px-3.5 rounded-full font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5">
+          🗑️ Clear
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 2: Multi-Field Web App Sandbox (Default active so user can test Side Panel typing into apps) -->
+    <section id="viewSandbox" class="apple-card p-4 sm:p-6 flex flex-col gap-4 pr-10 sm:pr-14">
+      <div>
+        <h2 class="text-sm sm:text-base font-semibold">Use Other Apps While Side Panel Stays on Edge</h2>
+        <p class="text-xs text-sec">Tap any app box below, then tap the floating <strong>Side Panel</strong> on the right edge (or top notification) to speak without switching apps!</p>
+      </div>
+
+      <!-- Simulated Web Search Input -->
+      <div class="apple-subtle p-3.5 flex flex-col gap-2">
+        <label for="sandboxSearch" class="text-xs font-semibold uppercase tracking-wider text-sec">1. Chrome Web Search</label>
+        <div class="flex gap-2">
+          <input
+            id="sandboxSearch"
+            type="text"
+            placeholder="Tap here & speak via the right-edge Side Panel..."
+            class="dictation-target apple-input flex-1 px-3.5 py-2 text-sm"
+          />
+          <button id="copySearchBtn" type="button" class="apple-btn-secondary px-4 py-2 rounded-full text-xs font-semibold shrink-0">Copy</button>
+        </div>
+      </div>
+
+      <!-- Simulated Chat / WhatsApp Message Box -->
+      <div class="apple-subtle p-3.5 flex flex-col gap-2">
+        <label for="sandboxChat" class="text-xs font-semibold uppercase tracking-wider text-sec">2. WhatsApp / Messenger Chat</label>
+        <div class="flex gap-2">
+          <input
+            id="sandboxChat"
+            type="text"
+            placeholder="Tap here & dictate a message using Side Panel..."
+            class="dictation-target apple-input flex-1 px-3.5 py-2 text-sm"
+          />
+          <button id="sendChatSimBtn" type="button" class="apple-btn-primary px-4 py-2 rounded-full text-xs font-semibold shrink-0">Send</button>
+        </div>
+        <div id="chatLog" class="text-xs space-y-1.5 pt-1"></div>
+      </div>
+
+      <!-- Simulated Email / Document Body -->
+      <div class="apple-subtle p-3.5 flex flex-col gap-2">
+        <label for="sandboxEmail" class="text-xs font-semibold uppercase tracking-wider text-sec">3. Gmail / Notes App</label>
+        <textarea
+          id="sandboxEmail"
+          rows="3"
+          placeholder="Tap here & dictate an email or note..."
+          class="dictation-target apple-input w-full p-3 text-sm"
+        ></textarea>
+      </div>
+    </section>
+
+    <!-- Saved Notes / Dictation History -->
+    <section class="apple-card p-4 sm:p-6 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs sm:text-sm font-semibold uppercase tracking-wider text-sec">Saved Notes &amp; Voice Shortcuts</h2>
+        <span id="snippetCountBadge" class="text-xs font-medium text-sec">0 saved</span>
+      </div>
+
+      <div id="snippetList" class="space-y-2 max-h-48 overflow-y-auto">
+        <div class="text-xs text-mut py-2">No saved snippets yet. Tap "Save Note" to store reusable text clips.</div>
+      </div>
+
+      <!-- Compact Voice Commands Reference -->
+      <div class="mt-1 pt-3 hairline-t flex flex-wrap items-center gap-2 text-[11px] text-sec">
+        <span class="font-semibold" style="color: var(--text-primary);">Voice Commands:</span>
+        <span class="px-2.5 py-1 rounded-full apple-subtle">"comma" → ,</span>
+        <span class="px-2.5 py-1 rounded-full apple-subtle">"period" / "full stop" → .</span>
+        <span class="px-2.5 py-1 rounded-full apple-subtle">"question mark" → ?</span>
+        <span class="px-2.5 py-1 rounded-full apple-subtle">"new line" → ↵</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Apple-Style Floating Pill Toast Notification -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden px-5 py-2.5 rounded-full apple-btn-primary text-xs sm:text-sm font-medium shadow-2xl">
+    Copied to clipboard
+  </div>
+
+  <script>
+    (function () {
+      // DOM Elements
+      const htmlEl = document.documentElement;
+      const themeLightBtn = document.getElementById('themeLightBtn');
+      const themeDarkBtn = document.getElementById('themeDarkBtn');
+
+      const androidNotifBar = document.getElementById('androidNotifBar');
+      const notifEngineBadge = document.getElementById('notifEngineBadge');
+      const notifSpeakBtn = document.getElementById('notifSpeakBtn');
+      const notifStopBtn = document.getElementById('notifStopBtn');
+
+      const sidePanelContainer = document.getElementById('sidePanelContainer');
+      const sidePanelHandleBtn = document.getElementById('sidePanelHandleBtn');
+      const sideHandleDot = document.getElementById('sideHandleDot');
+      const sidePanelDrawer = document.getElementById('sidePanelDrawer');
+      const sidePanelModeText = document.getElementById('sidePanelModeText');
+      const collapseSidePanelBtn = document.getElementById('collapseSidePanelBtn');
+      const sidePanelMicBtn = document.getElementById('sidePanelMicBtn');
+      const sidePanelMicLabel = document.getElementById('sidePanelMicLabel');
+      const sidePanelSimBtn = document.getElementById('sidePanelSimBtn');
+      const sidePanelCopyBtn = document.getElementById('sidePanelCopyBtn');
+      const sidePanelPreview = document.getElementById('sidePanelPreview');
+      const sidePanelShutdownBtn = document.getElementById('sidePanelShutdownBtn');
+
+      const serviceStateBadge = document.getElementById('serviceStateBadge');
+      const androidAppIconBtn = document.getElementById('androidAppIconBtn');
+      const androidAppIconLabel = document.getElementById('androidAppIconLabel');
+      const engineHybridBtn = document.getElementById('engineHybridBtn');
+      const engineLocalBtn = document.getElementById('engineLocalBtn');
+      const engineOnlineBtn = document.getElementById('engineOnlineBtn');
+
+      const statusBadge = document.getElementById('statusBadge');
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+      const compatBanner = document.getElementById('compatBanner');
+      const dismissCompatBtn = document.getElementById('dismissCompatBtn');
+
+      const tabPadBtn = document.getElementById('tabPadBtn');
+      const tabSandboxBtn = document.getElementById('tabSandboxBtn');
+      const viewPad = document.getElementById('viewPad');
+      const viewSandbox = document.getElementById('viewSandbox');
+
+      const langSelect = document.getElementById('langSelect');
+      const punctToggle = document.getElementById('punctToggle');
+      const autoCopyToggle = document.getElementById('autoCopyToggle');
+
+      const micToggleBtn = document.getElementById('micToggleBtn');
+      const micBtnLabel = document.getElementById('micBtnLabel');
+      const waveIndicator = document.getElementById('waveIndicator');
+      const simulateBtn = document.getElementById('simulateBtn');
+      const undoPhraseBtn = document.getElementById('undoPhraseBtn');
+
+      const interimText = document.getElementById('interimText');
+      const activeTargetBadge = document.getElementById('activeTargetBadge');
+
+      const mainEditor = document.getElementById('mainEditor');
+      const wordCount = document.getElementById('wordCount');
+      const charCount = document.getElementById('charCount');
+
+      const copyBtn = document.getElementById('copyBtn');
+      const shareAndroidBtn = document.getElementById('shareAndroidBtn');
+      const whatsappBtn = document.getElementById('whatsappBtn');
+      const saveSnippetBtn = document.getElementById('saveSnippetBtn');
+      const clearBtn = document.getElementById('clearBtn');
+
+      const sandboxSearch = document.getElementById('sandboxSearch');
+      const copySearchBtn = document.getElementById('copySearchBtn');
+      const sandboxChat = document.getElementById('sandboxChat');
+      const sendChatSimBtn = document.getElementById('sendChatSimBtn');
+      const chatLog = document.getElementById('chatLog');
+      const sandboxEmail = document.getElementById('sandboxEmail');
+
+      const snippetList = document.getElementById('snippetList');
+      const snippetCountBadge = document.getElementById('snippetCountBadge');
+      const toast = document.getElementById('toast');
+
+      // Application State
+      let isListening = false;
+      let isSideServiceRunning = true; // 1st Open state = Active
+      let isSideDrawerExpanded = true;
+      let currentEngineMode = 'Hybrid (Local + Internet)';
+      let recognition = null;
+      let activeInput = sandboxSearch;
+      let activeInputName = 'Web Search';
+      let undoStack = [];
+      let savedSnippets = [];
+      let lastFinalTranscript = '';
+      let toastTimer = null;
+
+      // Theme Persistence & Switcher (White vs Black Apple Theme)
+      function applyTheme(theme) {
+        htmlEl.setAttribute('data-theme', theme);
+        if (theme === 'dark') {
+          themeDarkBtn.classList.add('seg-active');
+          themeLightBtn.classList.remove('seg-active');
+        } else {
+          themeLightBtn.classList.add('seg-active');
+          themeDarkBtn.classList.remove('seg-active');
+        }
+        try {
+          localStorage.setItem('omnivoice_theme_v1', theme);
+        } catch (e) {}
+      }
+
+      try {
+        const savedTheme = localStorage.getItem('omnivoice_theme_v1');
+        if (savedTheme === 'dark' || savedTheme === 'light') {
+          applyTheme(savedTheme);
+        }
+      } catch (e) {}
+
+      themeLightBtn.addEventListener('click', function () {
+        applyTheme('light');
+        showToast('White Studio theme active');
+      });
+
+      themeDarkBtn.addEventListener('click', function () {
+        applyTheme('dark');
+        showToast('Black Studio theme active');
+      });
+
+      // 1st Open vs 2nd Open Android App Lifecycle Logic
+      function updateServiceLifecycleUI() {
+        if (isSideServiceRunning) {
+          sidePanelContainer.classList.remove('hidden');
+          androidNotifBar.classList.remove('hidden');
+          serviceStateBadge.textContent = '1st Open: Side Panel ON';
+          serviceStateBadge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-500';
+          androidAppIconLabel.textContent = 'Tap App Icon (2nd Time: Stop All)';
+        } else {
+          if (isListening && recognition) {
+            isListening = false;
+            try { recognition.stop(); } catch (e) {}
+          }
+          setStatus('ready', 'Stopped');
+          sidePanelContainer.classList.add('hidden');
+          androidNotifBar.classList.add('hidden');
+          serviceStateBadge.textContent = '2nd Open: All Closed & Stopped';
+          serviceStateBadge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-500';
+          androidAppIconLabel.textContent = 'Tap App Icon (1st Time: Start Side Panel)';
+        }
+      }
+
+      androidAppIconBtn.addEventListener('click', function () {
+        isSideServiceRunning = !isSideServiceRunning;
+        updateServiceLifecycleUI();
+        if (isSideServiceRunning) {
+          isSideDrawerExpanded = true;
+          sidePanelDrawer.classList.remove('hidden');
+          showToast('1st Open: Floating Side Panel & Notification Started!');
+        } else {
+          showToast('2nd Open: Side Panel & Background Service Stopped!');
+        }
+      });
+
+      notifStopBtn.addEventListener('click', function () {
+        isSideServiceRunning = false;
+        updateServiceLifecycleUI();
+        showToast('Stopped all side panels & notifications');
+      });
+
+      sidePanelShutdownBtn.addEventListener('click', function () {
+        isSideServiceRunning = false;
+        updateServiceLifecycleUI();
+        showToast('2nd Open Stop: Closed Side Panel & Service');
+      });
+
+      // Collapse / Expand Floating Side Panel Drawer from Edge Handle
+      sidePanelHandleBtn.addEventListener('click', function () {
+        isSideDrawerExpanded = !isSideDrawerExpanded;
+        if (isSideDrawerExpanded) {
+          sidePanelDrawer.classList.remove('hidden');
+        } else {
+          sidePanelDrawer.classList.add('hidden');
+        }
+      });
+
+      collapseSidePanelBtn.addEventListener('click', function () {
+        isSideDrawerExpanded = false;
+        sidePanelDrawer.classList.add('hidden');
+        showToast('Docked to screen edge — tap Voice tab anytime');
+      });
+
+      // Hybrid / Local Offline / Online Mode Switcher
+      function setEngineMode(mode, activeBtn) {
+        currentEngineMode = mode;
+        [engineHybridBtn, engineLocalBtn, engineOnlineBtn].forEach(function (b) {
+          b.classList.remove('seg-active');
+        });
+        activeBtn.classList.add('seg-active');
+        notifEngineBadge.textContent = mode;
+        sidePanelModeText.textContent = mode;
+        showToast('Engine: ' + mode);
+      }
+
+      engineHybridBtn.addEventListener('click', function () {
+        setEngineMode('Hybrid: Local + Internet', engineHybridBtn);
+      });
+      engineLocalBtn.addEventListener('click', function () {
+        setEngineMode('Local Offline On-Device', engineLocalBtn);
+      });
+      engineOnlineBtn.addEventListener('click', function () {
+        setEngineMode('Internet Cloud Only', engineOnlineBtn);
+      });
+
+      // Load saved snippets from localStorage safely
+      try {
+        const raw = localStorage.getItem('omnivoice_snippets_v1');
+        if (raw) {
+          savedSnippets = JSON.parse(raw) || [];
+        }
+      } catch (e) {
+        savedSnippets = [];
+      }
+
+      // Spoken Punctuation Dictionary
+      const VOICE_PUNCTUATION = [
+        { pattern: /\b(period|full stop)\b/gi, replacement: '.' },
+        { pattern: /\bcomma\b/gi, replacement: ',' },
+        { pattern: /\b(question mark)\b/gi, replacement: '?' },
+        { pattern: /\b(exclamation mark|exclamation point)\b/gi, replacement: '!' },
+        { pattern: /\bcolon\b/gi, replacement: ':' },
+        { pattern: /\bsemicolon\b/gi, replacement: ';' },
+        { pattern: /\b(new line|next line)\b/gi, replacement: '\n' },
+        { pattern: /\bnew paragraph\b/gi, replacement: '\n\n' }
+      ];
+
+      const SAMPLE_PHRASES = {
+        'en-IN': [
+          'Hello team, I am dictating from the floating Android Side Panel.',
+          'Please send the updated project report by 5 PM today.',
+          'Works both locally offline and with internet across all apps!'
+        ],
+        'en-US': [
+          'Dictating directly from the floating edge panel without opening the main app.',
+          'Let us schedule our quick review call for tomorrow morning.'
+        ],
+        'mr-IN': [
+          'नमस्कार, हा साईड पॅनेल व्हॉइस टायपिंग ॲप खूप सोपा आहे.',
+          'आज संध्याकाळी पाच वाजता मीटिंग आहे.'
+        ],
+        'hi-IN': [
+          'नमस्ते, साइड पैनल से बिना ऐप खोले सीधा टाइप हो रहा है।',
+          'कृपया आज शाम तक रिपोर्ट भेजें।'
+        ]
+      };
+      let sampleIdx = 0;
+
+      function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.remove('hidden');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+          toast.classList.add('hidden');
+        }, 2200);
+      }
+
+      function setStatus(state, label) {
+        statusText.textContent = label;
+        statusDot.className = 'w-2 h-2 rounded-full ';
+        if (state === 'listening') {
+          statusDot.className += 'bg-red-500 animate-ping';
+          sideHandleDot.className = 'w-2.5 h-2.5 rounded-full bg-red-500 animate-ping';
+          micToggleBtn.classList.add('mic-pulse');
+          sidePanelMicBtn.classList.add('mic-pulse');
+          micBtnLabel.textContent = 'Listening... Tap to Stop';
+          sidePanelMicLabel.textContent = 'Listening... Tap Stop';
+          notifSpeakBtn.textContent = '⏹ Stop Mic';
+          waveIndicator.classList.add('wave-active');
+        } else if (state === 'error') {
+          statusDot.className += 'bg-amber-500';
+          sideHandleDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
+          micToggleBtn.classList.remove('mic-pulse');
+          sidePanelMicBtn.classList.remove('mic-pulse');
+          micBtnLabel.textContent = 'Tap to Speak';
+          sidePanelMicLabel.textContent = 'Tap & Speak Here';
+          notifSpeakBtn.textContent = '🎙 Speak Now';
+          waveIndicator.classList.remove('wave-active');
+        } else {
+          statusDot.className += 'bg-emerald-500';
+          sideHandleDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500';
+          micToggleBtn.classList.remove('mic-pulse');
+          sidePanelMicBtn.classList.remove('mic-pulse');
+          micBtnLabel.textContent = 'Tap to Speak';
+          sidePanelMicLabel.textContent = 'Tap & Speak Here';
+          notifSpeakBtn.textContent = '🎙 Speak Now';
+          waveIndicator.classList.remove('wave-active');
+        }
+      }
+
+      function updateCounters() {
+        const text = mainEditor.value.trim();
+        const words = text ? text.split(/\s+/).length : 0;
+        wordCount.textContent = String(words);
+        charCount.textContent = String(mainEditor.value.length);
+      }
+
+      function formatTranscript(rawText) {
+        let out = rawText.trim();
+        if (!out) return '';
+
+        if (punctToggle.checked) {
+          VOICE_PUNCTUATION.forEach(function (rule) {
+            out = out.replace(rule.pattern, rule.replacement);
+          });
+          out = out.replace(/\s+([.,?!:;])/g, '$1');
+        }
+
+        out = out.charAt(0).toUpperCase() + out.slice(1);
+        return out;
+      }
+
+      function copyTextSilently(textToCopy, notifyMessage) {
+        if (!textToCopy || !textToCopy.trim()) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(function () {
+            if (notifyMessage) showToast(notifyMessage);
+          }).catch(function () {
+            fallbackCopy(textToCopy, notifyMessage);
+          });
+        } else {
+          fallbackCopy(textToCopy, notifyMessage);
+        }
+      }
+
+      function fallbackCopy(textToCopy, notifyMessage) {
+        const temp = document.createElement('textarea');
+        temp.value = textToCopy;
+        temp.style.position = 'fixed';
+        temp.style.opacity = '0';
+        document.body.appendChild(temp);
+        temp.select();
+        try {
+          document.execCommand('copy');
+          if (notifyMessage) showToast(notifyMessage);
+        } catch (err) {
+          if (notifyMessage) showToast('Select text to copy manually');
+        }
+        document.body.removeChild(temp);
+      }
+
+      function insertAtCursor(targetEl, phrase) {
+        if (!targetEl || !phrase) return;
+
+        undoStack.push({
+          el: targetEl,
+          value: targetEl.value
+        });
+        if (undoStack.length > 25) undoStack.shift();
+
+        const start = typeof targetEl.selectionStart === 'number' ? targetEl.selectionStart : targetEl.value.length;
+        const end = typeof targetEl.selectionEnd === 'number' ? targetEl.selectionEnd : targetEl.value.length;
+        const before = targetEl.value.slice(0, start);
+        const after = targetEl.value.slice(end);
+
+        const needsLeadingSpace = before.length > 0 && !/[\s\n]$/.test(before) && !/^[.,?!:;\n]/.test(phrase);
+        const inserted = (needsLeadingSpace ? ' ' : '') + phrase;
+
+        targetEl.value = before + inserted + after;
+        const newPos = before.length + inserted.length;
+        try {
+          targetEl.setSelectionRange(newPos, newPos);
+        } catch (e) {}
+
+        sidePanelPreview.textContent = '“' + phrase + '” → ' + activeInputName;
+        updateCounters();
+
+        if (autoCopyToggle.checked) {
+          copyTextSilently(targetEl.value, 'Typed into ' + activeInputName + ' & Copied!');
+        }
+      }
+
+      // Initialize Web Speech API for Android Chrome & Desktop Browsers
+      const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (!SpeechRecognitionAPI) {
+        compatBanner.classList.remove('hidden');
+      } else {
+        recognition = new SpeechRecognitionAPI();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = langSelect.value;
+
+        recognition.onstart = function () {
+          setStatus('listening', 'Listening (' + langSelect.value + ')');
+          interimText.textContent = 'Speak now...';
+          sidePanelPreview.textContent = 'Listening (' + langSelect.value + ')...';
+        };
+
+        recognition.onresult = function (event) {
+          let interimTranscript = '';
+          let finalChunk = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcriptPiece = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalChunk += transcriptPiece + ' ';
+            } else {
+              interimTranscript += transcriptPiece;
+            }
+          }
+
+          if (interimTranscript) {
+            interimText.textContent = 'Hearing: “' + interimTranscript.trim() + '”';
+            sidePanelPreview.textContent = 'Hearing: ' + interimTranscript.trim();
+          }
+
+          const cleanedFinal = finalChunk.trim();
+          if (cleanedFinal && cleanedFinal !== lastFinalTranscript) {
+            lastFinalTranscript = cleanedFinal;
+            const formatted = formatTranscript(cleanedFinal);
+            insertAtCursor(activeInput, formatted);
+            interimText.textContent = 'Typed: “' + formatted + '”';
+          }
+        };
+
+        recognition.onerror = function (event) {
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            isListening = false;
+            compatBanner.classList.remove('hidden');
+            setStatus('error', 'Mic Blocked — Use Simulate');
+            interimText.textContent = 'Microphone permission restricted in this preview. Tap "⚡ Test Voice" on Side Panel!';
+          } else if (event.error !== 'no-speech') {
+            setStatus('error', 'Mic paused (' + event.error + ')');
+          }
+        };
+
+        recognition.onend = function () {
+          if (isListening) {
+            try {
+              recognition.lang = langSelect.value;
+              recognition.start();
+            } catch (e) {
+              isListening = false;
+              setStatus('ready', 'Ready');
+            }
+          } else {
+            setStatus('ready', 'Ready');
+          }
+        };
+      }
+
+      function toggleMicrophone() {
+        if (!recognition) {
+          compatBanner.classList.remove('hidden');
+          triggerSimulatedSpeech();
+          return;
+        }
+
+        if (isListening) {
+          isListening = false;
+          try {
+            recognition.stop();
+          } catch (e) {}
+          setStatus('ready', 'Paused');
+          interimText.textContent = 'Dictation paused. Tap Side Panel Mic to resume.';
+        } else {
+          lastFinalTranscript = '';
+          isListening = true;
+          recognition.lang = langSelect.value;
+          try {
+            recognition.start();
+          } catch (e) {
+            setStatus('listening', 'Listening...');
+          }
+        }
+      }
+
+      micToggleBtn.addEventListener('click', toggleMicrophone);
+      sidePanelMicBtn.addEventListener('click', toggleMicrophone);
+      notifSpeakBtn.addEventListener('click', toggleMicrophone);
+
+      // Language change handler
+      langSelect.addEventListener('change', function () {
+        if (recognition) {
+          recognition.lang = langSelect.value;
+          if (isListening) {
+            try {
+              recognition.stop();
+            } catch (e) {}
+          }
+        }
+        showToast('Language: ' + langSelect.options[langSelect.selectedIndex].text);
+      });
+
+      // Simulate Voice Dictation
+      function triggerSimulatedSpeech() {
+        const lang = langSelect.value;
+        const pool = SAMPLE_PHRASES[lang] || SAMPLE_PHRASES['en-IN'];
+        const phrase = pool[sampleIdx % pool.length];
+        sampleIdx += 1;
+
+        setStatus('listening', 'Simulating Voice...');
+        interimText.textContent = 'Hearing: “' + phrase.slice(0, 24) + '...”';
+        sidePanelPreview.textContent = 'Hearing: “' + phrase.slice(0, 18) + '...”';
+
+        setTimeout(function () {
+          const formatted = formatTranscript(phrase);
+          insertAtCursor(activeInput, formatted);
+          interimText.textContent = 'Typed: “' + formatted + '”';
+          if (!isListening) {
+            setStatus('ready', 'Ready');
+          }
+        }, 420);
+      }
+
+      simulateBtn.addEventListener('click', triggerSimulatedSpeech);
+      sidePanelSimBtn.addEventListener('click', triggerSimulatedSpeech);
+
+      sidePanelCopyBtn.addEventListener('click', function () {
+        const txt = activeInput.value.trim() || mainEditor.value.trim();
+        if (!txt) {
+          showToast('Speak something first!');
+          return;
+        }
+        copyTextSilently(txt, 'Copied from Side Panel!');
+      });
+
+      // Undo last dictated phrase
+      undoPhraseBtn.addEventListener('click', function () {
+        if (undoStack.length === 0) {
+          showToast('Nothing to undo');
+          return;
+        }
+        const prev = undoStack.pop();
+        prev.el.value = prev.value;
+        updateCounters();
+        showToast('Undid last phrase');
+      });
+
+      // Track which input box currently has focus
+      function setActiveTarget(el, label) {
+        activeInput = el;
+        activeInputName = label;
+        activeTargetBadge.textContent = 'Target: ' + label;
+        sidePanelPreview.textContent = 'Target box: ' + label;
+      }
+
+      mainEditor.addEventListener('focus', function () {
+        setActiveTarget(mainEditor, 'Main Pad');
+      });
+      mainEditor.addEventListener('input', updateCounters);
+
+      sandboxSearch.addEventListener('focus', function () {
+        setActiveTarget(sandboxSearch, 'Web Search');
+      });
+      sandboxChat.addEventListener('focus', function () {
+        setActiveTarget(sandboxChat, 'Chat Box');
+      });
+      sandboxEmail.addEventListener('focus', function () {
+        setActiveTarget(sandboxEmail, 'Email Body');
+      });
+
+      // Quick insert punctuation buttons
+      document.querySelectorAll('.quick-insert-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const symbol = btn.getAttribute('data-insert') || '';
+          insertAtCursor(activeInput, symbol);
+          activeInput.focus();
+        });
+      });
+
+      // Tab Switching
+      tabPadBtn.addEventListener('click', function () {
+        viewPad.classList.remove('hidden');
+        viewSandbox.classList.add('hidden');
+        tabPadBtn.classList.add('seg-active');
+        tabSandboxBtn.classList.remove('seg-active');
+        setActiveTarget(mainEditor, 'Main Pad');
+      });
+
+      tabSandboxBtn.addEventListener('click', function () {
+        viewSandbox.classList.remove('hidden');
+        viewPad.classList.add('hidden');
+        tabSandboxBtn.classList.add('seg-active');
+        tabPadBtn.classList.remove('seg-active');
+        setActiveTarget(sandboxSearch, 'Web Search');
+      });
+
+      // Action Buttons
+      copyBtn.addEventListener('click', function () {
+        if (!mainEditor.value.trim()) {
+          showToast('Pad is empty — speak something first!');
+          return;
+        }
+        copyTextSilently(mainEditor.value, 'Copied! Switch to any app & Paste');
+      });
+
+      shareAndroidBtn.addEventListener('click', function () {
+        const text = activeInput.value.trim() || mainEditor.value.trim();
+        if (!text) {
+          showToast('Speak some text first before sharing');
+          return;
+        }
+        if (navigator.share) {
+          navigator.share({
+            title: 'Dictated Note',
+            text: text
+          }).catch(function () {});
+        } else {
+          copyTextSilently(text, 'Copied to clipboard for sharing!');
+        }
+      });
+
+      whatsappBtn.addEventListener('click', function () {
+        const text = activeInput.value.trim() || mainEditor.value.trim();
+        if (!text) {
+          showToast('Speak a message first!');
+          return;
+        }
+        copyTextSilently(text, 'Copied! Opening WhatsApp...');
+        const url = 'https://wa.me/?text=' + encodeURIComponent(text);
+        window.open(url, '_blank', 'noopener,noreferrer');
+      });
+
+      clearBtn.addEventListener('click', function () {
+        if (!mainEditor.value) return;
+        undoStack.push({ el: mainEditor, value: mainEditor.value });
+        mainEditor.value = '';
+        updateCounters();
+        showToast('Cleared pad (Tap Undo to restore)');
+      });
+
+      // Sandbox specific buttons
+      copySearchBtn.addEventListener('click', function () {
+        if (!sandboxSearch.value.trim()) {
+          showToast('Search bar is empty');
+          return;
+        }
+        copyTextSilently(sandboxSearch.value, 'Copied search query!');
+      });
+
+      sendChatSimBtn.addEventListener('click', function () {
+        const msg = sandboxChat.value.trim();
+        if (!msg) {
+          showToast('Speak or type a chat message first');
+          return;
+        }
+        const bubble = document.createElement('div');
+        bubble.className = 'apple-card px-3 py-2 text-xs font-medium';
+        bubble.textContent = '✓ Sent: ' + msg;
+        chatLog.prepend(bubble);
+        sandboxChat.value = '';
+      });
+
+      // Saved Snippets Logic
+      function renderSnippets() {
+        snippetCountBadge.textContent = savedSnippets.length + ' saved';
+        snippetList.innerHTML = '';
+        if (savedSnippets.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'text-xs text-mut py-2';
+          empty.textContent = 'No saved snippets yet. Tap "Save Note" to keep reusable text clips.';
+          snippetList.appendChild(empty);
+          return;
+        }
+
+        savedSnippets.forEach(function (item) {
+          const row = document.createElement('div');
+          row.className = 'apple-subtle p-3 flex items-center justify-between gap-2';
+
+          const textSpan = document.createElement('p');
+          textSpan.className = 'text-xs sm:text-sm truncate flex-1 font-medium';
+          textSpan.textContent = item.text;
+
+          const btnGroup = document.createElement('div');
+          btnGroup.className = 'flex items-center gap-1.5 shrink-0';
+
+          const copyItemBtn = document.createElement('button');
+          copyItemBtn.type = 'button';
+          copyItemBtn.className = 'apple-btn-secondary px-3 py-1 rounded-full text-xs font-medium';
+          copyItemBtn.textContent = 'Copy';
+          copyItemBtn.addEventListener('click', function () {
+            copyTextSilently(item.text, 'Snippet copied!');
+          });
+
+          const delItemBtn = document.createElement('button');
+          delItemBtn.type = 'button';
+          delItemBtn.className = 'apple-btn-secondary px-2.5 py-1 rounded-full text-xs';
+          delItemBtn.textContent = '✕';
+          delItemBtn.addEventListener('click', function () {
+            savedSnippets = savedSnippets.filter(function (s) { return s.id !== item.id; });
+            try {
+              localStorage.setItem('omnivoice_snippets_v1', JSON.stringify(savedSnippets));
+            } catch (e) {}
+            renderSnippets();
+          });
+
+          btnGroup.appendChild(copyItemBtn);
+          btnGroup.appendChild(delItemBtn);
+          row.appendChild(textSpan);
+          row.appendChild(btnGroup);
+          snippetList.appendChild(row);
+        });
+      }
+
+      saveSnippetBtn.addEventListener('click', function () {
+        const text = mainEditor.value.trim();
+        if (!text) {
+          showToast('Speak something first to save a note');
+          return;
+        }
+        savedSnippets.unshift({
+          id: String(Date.now()),
+          text: text
+        });
+        try {
+          localStorage.setItem('omnivoice_snippets_v1', JSON.stringify(savedSnippets));
+        } catch (e) {}
+        renderSnippets();
+        showToast('Saved to snippets!');
+      });
+
+      dismissCompatBtn.addEventListener('click', function () {
+        compatBanner.classList.add('hidden');
+      });
+
+      // Initial render
+      updateCounters();
+      renderSnippets();
+      updateServiceLifecycleUI();
+    })();
+  </script>
+</body>
+</html>
