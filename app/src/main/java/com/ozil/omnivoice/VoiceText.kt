@@ -15,7 +15,7 @@ object VoiceText {
 
     private val SPACE_BEFORE_PUNCT = Regex("\\s+([.,?!:;])")
 
-    fun format(raw: String, spokenPunctuation: Boolean): String {
+    fun format(raw: String, spokenPunctuation: Boolean, capitalizeFirst: Boolean = true): String {
         var out = raw.trim()
         if (out.isEmpty()) return ""
         if (spokenPunctuation) {
@@ -26,6 +26,7 @@ object VoiceText {
         }
         out = out.trim()
         if (out.isEmpty()) return ""
+        if (!capitalizeFirst) return out
         return out.substring(0, 1).uppercase() + out.substring(1)
     }
 }

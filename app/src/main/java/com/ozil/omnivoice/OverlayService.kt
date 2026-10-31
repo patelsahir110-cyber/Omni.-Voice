@@ -72,6 +72,10 @@ class OverlayService : Service() {
     private var listening = false
     private var recognizer: SpeechRecognizer? = null
     private var lastEvent = 0L
+    private var sentenceOpen = true // next chunk starts a new sentence -> capitalize
+    private val wordQueue = java.util.ArrayDeque<String>()
+    private val typeHandler = Handler(Looper.getMainLooper())
+    private var warnedCopy = false
     private val mutedStreams = mutableListOf<Int>()
 
     private var micBtn: TextView? = null
@@ -125,6 +129,8 @@ class OverlayService : Service() {
         }
         rootView = null
         handler.removeCallbacksAndMessages(null)
+        typeHandler.removeCallbacksAndMessages(null)
+        wordQueue.clear()
         super.onDestroy()
     }
 
@@ -445,6 +451,7 @@ class OverlayService : Service() {
             return
         }
         listening = true
+        setPreview("Listening… speak, pause freely")
         muteBeeps()
         refreshListeningUi()
         createAndStart(true)
@@ -496,7 +503,9 @@ class OverlayService : Service() {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Prefs.LANGS[Prefs.lang(this@OverlayService)].first)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            // Only finished, checked text is typed (no half-guessed words flickering in).
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             // Ask the phone's recognizer to wait through pauses (some phones ignore this).
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
@@ -559,7 +568,6 @@ class OverlayService : Service() {
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
             lastEvent = SystemClock.elapsedRealtime()
-            setPreview("Listening… speak now")
         }
 
         override fun onBeginningOfSpeech() {
@@ -580,19 +588,30 @@ class OverlayService : Service() {
 
         override fun onPartialResults(partialResults: Bundle?) {
             lastEvent = SystemClock.elapsedRealtime()
-            val t = partialResults
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull()
-            if (!t.isNullOrBlank()) setPreview("Hearing: $t")
         }
 
         override fun onResults(results: Bundle?) {
             lastEvent = SystemClock.elapsedRealtime()
-            val best = results
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull()
+            val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            val conf = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
+            var idx = 0
+            if (list != null && conf != null && conf.size == list.size && conf.isNotEmpty()) {
+                var bestScore = conf[0]
+                for (k in conf.indices) {
+                    if (conf[k] > bestScore) {
+                        bestScore = conf[k]
+                        idx = k
+                    }
+                }
+            }
+            val best = list?.getOrNull(idx)
             if (!best.isNullOrBlank()) {
-                deliver(VoiceText.format(best, Prefs.punctuation(this@OverlayService)))
+                val text = VoiceText.format(best, Prefs.punctuation(this@OverlayService), sentenceOpen)
+                if (text.isNotEmpty()) {
+                    val t = text.trimEnd()
+                    sentenceOpen = t.isEmpty() || t.last() in ".?!" || text.endsWith("\n")
+                    deliver(text)
+                }
             }
             if (listening) restartSoon(20)
         }
@@ -630,13 +649,35 @@ class OverlayService : Service() {
 
     private fun deliver(text: String) {
         if (text.isEmpty()) return
-        val typed = TypeAccessibilityService.instance?.insert(text) ?: false
-        if (typed) {
-            setPreview("Typed: $text")
-        } else {
-            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("OmniVoice", text))
-            setPreview("Copied (tap a text box first, or enable accessibility): $text")
+        for (w in text.split(" ")) {
+            if (w.isNotEmpty()) wordQueue.add(w)
+        }
+        setPreview("Typing: $text")
+        typeHandler.removeCallbacks(typer)
+        typeHandler.post(typer)
+    }
+
+    // Types the queued words one by one (gradual, smooth). If no text box is focused,
+    // keeps the words safely queued and retries, so nothing is lost.
+    private val typer = object : Runnable {
+        override fun run() {
+            val w = wordQueue.peek() ?: return
+            val ok = TypeAccessibilityService.instance?.insert(w) ?: false
+            if (ok) {
+                wordQueue.poll()
+                warnedCopy = false
+                if (wordQueue.isEmpty()) return
+                typeHandler.postDelayed(this, if (wordQueue.size > 40) 20L else 55L)
+            } else {
+                if (!warnedCopy) {
+                    warnedCopy = true
+                    val all = wordQueue.joinToString(" ")
+                    val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("OmniVoice", all))
+                    setPreview("Tap a text box — your words are saved and also copied")
+                }
+                typeHandler.postDelayed(this, 1200L)
+            }
         }
     }
 }
