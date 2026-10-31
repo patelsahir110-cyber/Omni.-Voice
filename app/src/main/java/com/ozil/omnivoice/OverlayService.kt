@@ -16,11 +16,13 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Icon
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -69,6 +71,8 @@ class OverlayService : Service() {
     private var drawerOpen = true
     private var listening = false
     private var recognizer: SpeechRecognizer? = null
+    private var lastEvent = 0L
+    private val mutedStreams = mutableListOf<Int>()
 
     private var micBtn: TextView? = null
     private var previewTv: TextView? = null
@@ -441,8 +445,9 @@ class OverlayService : Service() {
             return
         }
         listening = true
+        muteBeeps()
         refreshListeningUi()
-        createAndStart()
+        createAndStart(true)
     }
 
     private fun stopListening() {
@@ -450,65 +455,131 @@ class OverlayService : Service() {
         handler.removeCallbacksAndMessages(null)
         recognizer?.let {
             try {
-                it.stopListening()
+                it.cancel()
                 it.destroy()
             } catch (_: Exception) {
             }
         }
         recognizer = null
+        unmuteBeeps()
         refreshListeningUi()
     }
 
-    private fun createAndStart() {
-        if (!listening) return
-        recognizer?.let {
+    // The system recognizer beeps every time it (re)starts. Mute those streams while dictating.
+    private fun muteBeeps() {
+        if (mutedStreams.isNotEmpty()) return
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        for (st in intArrayOf(AudioManager.STREAM_MUSIC, AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM)) {
             try {
-                it.destroy()
+                if (!am.isStreamMute(st)) {
+                    am.adjustStreamVolume(st, AudioManager.ADJUST_MUTE, 0)
+                    mutedStreams.add(st)
+                }
             } catch (_: Exception) {
             }
         }
-        val sr = SpeechRecognizer.createSpeechRecognizer(this)
-        sr.setRecognitionListener(listener)
-        recognizer = sr
+    }
 
-        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+    private fun unmuteBeeps() {
+        if (mutedStreams.isEmpty()) return
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        for (st in mutedStreams) {
+            try {
+                am.adjustStreamVolume(st, AudioManager.ADJUST_UNMUTE, 0)
+            } catch (_: Exception) {
+            }
+        }
+        mutedStreams.clear()
+    }
+
+    private fun buildIntent(): Intent =
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Prefs.LANGS[Prefs.lang(this@OverlayService)].first)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            // Keep listening through pauses: wait up to 20 s of silence before finishing.
+            // Ask the phone's recognizer to wait through pauses (some phones ignore this).
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            // "Offline" mode asks the phone to use on-device recognition when it is installed.
             if (Prefs.engine(this@OverlayService) == 1) {
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             }
         }
+
+    private fun createAndStart(forceNew: Boolean = false) {
+        if (!listening) return
+        var sr = recognizer
+        if (sr == null || forceNew) {
+            sr?.let {
+                try {
+                    it.cancel()
+                    it.destroy()
+                } catch (_: Exception) {
+                }
+            }
+            sr = SpeechRecognizer.createSpeechRecognizer(this)
+            sr.setRecognitionListener(listener)
+            recognizer = sr
+        } else {
+            try {
+                sr?.cancel()
+            } catch (_: Exception) {
+            }
+        }
+        val rec = sr ?: return
+        lastEvent = SystemClock.elapsedRealtime()
         try {
-            sr.startListening(i)
+            rec.startListening(buildIntent())
         } catch (e: Exception) {
             setPreview("Could not start mic: ${e.message}")
-            restartSoon(1200)
+            restartSoon(800, true)
         }
+        handler.removeCallbacks(watchdog)
+        handler.postDelayed(watchdog, 2500)
     }
 
-    private fun restartSoon(delayMs: Long) {
-        handler.postDelayed({ if (listening) createAndStart() }, delayMs)
+    private fun restartSoon(delayMs: Long, forceNew: Boolean = false) {
+        handler.postDelayed({ if (listening) createAndStart(forceNew) }, delayMs)
+    }
+
+    // If the recognizer goes silent (no callbacks at all for 4 s), rebuild it so dictation never just dies.
+    private val watchdog = object : Runnable {
+        override fun run() {
+            if (!listening) return
+            if (SystemClock.elapsedRealtime() - lastEvent > 4000) {
+                setPreview("Reconnecting mic…")
+                createAndStart(true)
+            } else {
+                handler.postDelayed(this, 2500)
+            }
+        }
     }
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
+            lastEvent = SystemClock.elapsedRealtime()
             setPreview("Listening… speak now")
         }
 
-        override fun onBeginningOfSpeech() {}
-        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onBeginningOfSpeech() {
+            lastEvent = SystemClock.elapsedRealtime()
+        }
+
+        override fun onRmsChanged(rmsdB: Float) {
+            lastEvent = SystemClock.elapsedRealtime()
+        }
+
         override fun onBufferReceived(buffer: ByteArray?) {}
-        override fun onEndOfSpeech() {}
+
+        override fun onEndOfSpeech() {
+            lastEvent = SystemClock.elapsedRealtime()
+        }
+
         override fun onEvent(eventType: Int, params: Bundle?) {}
 
         override fun onPartialResults(partialResults: Bundle?) {
+            lastEvent = SystemClock.elapsedRealtime()
             val t = partialResults
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
@@ -516,16 +587,18 @@ class OverlayService : Service() {
         }
 
         override fun onResults(results: Bundle?) {
+            lastEvent = SystemClock.elapsedRealtime()
             val best = results
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
             if (!best.isNullOrBlank()) {
                 deliver(VoiceText.format(best, Prefs.punctuation(this@OverlayService)))
             }
-            if (listening) restartSoon(30)
+            if (listening) restartSoon(20)
         }
 
         override fun onError(error: Int) {
+            lastEvent = SystemClock.elapsedRealtime()
             if (!listening) return
             when (error) {
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
@@ -536,15 +609,19 @@ class OverlayService : Service() {
                     setPreview("This language is not available offline — switch engine or language")
                     stopListening()
                 }
+                // Normal pause: nothing heard. Quietly start the next round.
                 SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> restartSoon(30)
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> restartSoon(1000)
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> restartSoon(20)
                 SpeechRecognizer.ERROR_NETWORK,
                 SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
-                    setPreview("No internet — try the Offline engine")
-                    restartSoon(2000)
+                    setPreview("Weak internet — retrying (or use Offline engine)")
+                    restartSoon(1200, true)
                 }
-                else -> restartSoon(700)
+                // Recognizer got stuck: rebuild it.
+                else -> {
+                    setPreview("Mic restarting (code $error)…")
+                    restartSoon(300, true)
+                }
             }
         }
     }
