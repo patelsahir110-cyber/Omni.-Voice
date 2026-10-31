@@ -475,6 +475,10 @@ class OverlayService : Service() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Prefs.LANGS[Prefs.lang(this@OverlayService)].first)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            // Keep listening through pauses: wait up to 20 s of silence before finishing.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             // "Offline" mode asks the phone to use on-device recognition when it is installed.
             if (Prefs.engine(this@OverlayService) == 1) {
@@ -518,7 +522,7 @@ class OverlayService : Service() {
             if (!best.isNullOrBlank()) {
                 deliver(VoiceText.format(best, Prefs.punctuation(this@OverlayService)))
             }
-            if (listening) restartSoon(250)
+            if (listening) restartSoon(30)
         }
 
         override fun onError(error: Int) {
@@ -533,7 +537,7 @@ class OverlayService : Service() {
                     stopListening()
                 }
                 SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> restartSoon(150)
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> restartSoon(30)
                 SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> restartSoon(1000)
                 SpeechRecognizer.ERROR_NETWORK,
                 SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
