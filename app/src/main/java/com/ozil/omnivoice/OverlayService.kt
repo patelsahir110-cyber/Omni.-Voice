@@ -700,19 +700,21 @@ class OverlayService : Service() {
                 } catch (_: Exception) {
                 }
             }
-            sr = SpeechRecognizer.createSpeechRecognizer(this)
-            sr.setRecognitionListener(listener)
-            recognizer = sr
+            val created = SpeechRecognizer.createSpeechRecognizer(this)
+            created.setRecognitionListener(listener)
+            recognizer = created
+            sr = created
         } else {
             try {
                 sr.cancel()
             } catch (_: Exception) {
             }
         }
+        val rec = sr ?: return
         lastEvent = now()
         roundActive = true
         try {
-            sr.startListening(buildIntent())
+            rec.startListening(buildIntent())
         } catch (e: Exception) {
             roundActive = false
             setPreview("Could not start mic: ${e.message}")
