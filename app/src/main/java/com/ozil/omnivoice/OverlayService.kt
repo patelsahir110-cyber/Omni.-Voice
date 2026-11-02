@@ -33,6 +33,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import kotlin.math.abs
@@ -72,6 +73,15 @@ class OverlayService : Service() {
     private var listening = false
     private var recognizer: SpeechRecognizer? = null
     private var lastEvent = 0L
+    private enum class Phase { IDLE, LISTENING, PROCESSING, DONE }
+    private var phase = Phase.IDLE
+    private val transcript = StringBuilder()
+    private var lastPartial = ""
+    private var roundActive = false
+    private var startedAt = 0L
+    private var level = 0f
+    private var resultBox: View? = null
+    private var resultTv: TextView? = null
     private var sentenceOpen = true // next chunk starts a new sentence -> capitalize
     private val wordQueue = java.util.ArrayDeque<String>()
     private val typeHandler = Handler(Looper.getMainLooper())
@@ -81,7 +91,7 @@ class OverlayService : Service() {
     private var micBtn: TextView? = null
     private var previewTv: TextView? = null
     private var dotView: View? = null
-    private var lastPreview = "Tap the mic, then speak"
+    private var lastPreview = "Tap Start, speak, then tap Finish"
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -147,7 +157,7 @@ class OverlayService : Service() {
     private fun buildNotification(): Notification {
         val speak = Notification.Action.Builder(
             Icon.createWithResource(this, R.drawable.ic_mic),
-            "Speak / Stop mic",
+            "Start / Finish",
             actionPi(ACTION_TOGGLE_MIC, 1)
         ).build()
         val stop = Notification.Action.Builder(
@@ -265,7 +275,7 @@ class OverlayService : Service() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = panelBg()
             visibility = if (drawerOpen) View.VISIBLE else View.GONE
-            layoutParams = LinearLayout.LayoutParams(dp(250), ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(dp(270), ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
         val title = TextView(this).apply {
@@ -283,7 +293,7 @@ class OverlayService : Service() {
         drawer.addView(title, lp(0))
         drawer.addView(modeLine, lp(2))
 
-        val mic = pill("🎙  Tap & Speak", c.accent, c.accentFg, 13f) { toggleMic() }
+        val mic = pill("🎙  Start", c.accent, c.accentFg, 14f) { toggleMic() }
         micBtn = mic
         drawer.addView(mic, lp(10))
 
@@ -317,7 +327,7 @@ class OverlayService : Service() {
             text = lastPreview
             setTextColor(c.sub)
             textSize = 11f
-            maxLines = 2
+            maxLines = 3
             setPadding(dp(10), dp(8), dp(10), dp(8))
             background = GradientDrawable().apply {
                 setColor(c.subtle)
@@ -326,6 +336,43 @@ class OverlayService : Service() {
         }
         previewTv = preview
         drawer.addView(preview, lp(8))
+
+        // ---- result card: appears after Finish, with Copy / Insert / Clear
+        val resultView = TextView(this).apply {
+            setTextColor(c.text)
+            textSize = 13f
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+        }
+        resultTv = resultView
+        val scroll = MaxHeightScroll(this, dp(160)).apply {
+            background = GradientDrawable().apply {
+                setColor(c.subtle)
+                cornerRadius = dp(12).toFloat()
+            }
+            addView(resultView)
+        }
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        btnRow.addView(pill("📋 Copy", c.accent, c.accentFg, 12f) {
+            val t = transcript.toString().trim()
+            if (t.isNotEmpty()) {
+                copyToClipboard(t)
+                Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+            }
+        }, rowLp(6))
+        btnRow.addView(pill("⌨ Insert", c.subtle, c.text, 12f) {
+            val t = transcript.toString().trim()
+            if (t.isNotEmpty()) deliver(t)
+        }, rowLp(6))
+        btnRow.addView(pill("🗑 Clear", c.subtle, c.text, 12f) {
+            transcript.setLength(0)
+            setPhase(Phase.IDLE)
+            setPreview("Ready. Tap Start.")
+        }, rowLp(0))
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(scroll, lp(0))
+        box.addView(btnRow, lp(6))
+        resultBox = box
+        drawer.addView(box, lp(8))
 
         val close = pill("⏹  Close all", Color.parseColor("#1AFF3B30"), Color.parseColor("#FF3B30"), 11f) {
             stopSelf()
@@ -409,10 +456,11 @@ class OverlayService : Service() {
     }
 
     private fun afterSettingChange() {
-        val wasListening = listening
-        if (wasListening) stopListening()
+        if (phase == Phase.LISTENING || phase == Phase.PROCESSING) {
+            stopListening()
+            setPreview("Setting changed. Tap Start to record again.")
+        }
         rebuildUi()
-        if (wasListening) startListening()
     }
 
     private fun setPreview(text: String) {
@@ -422,22 +470,48 @@ class OverlayService : Service() {
 
     private fun refreshListeningUi() {
         val c = palette()
-        (dotView?.background as? GradientDrawable)?.setColor(
-            Color.parseColor(if (listening) "#FF3B30" else "#34C759")
-        )
-        micBtn?.let {
-            it.text = if (listening) "⏹  Listening… tap to stop" else "🎙  Tap & Speak"
-            (it.background as? GradientDrawable)?.setColor(
-                if (listening) Color.parseColor("#FF3B30") else c.accent
-            )
-            it.setTextColor(if (listening) Color.WHITE else c.accentFg)
+        val dotColor = when (phase) {
+            Phase.LISTENING -> "#FF3B30"
+            Phase.PROCESSING -> "#FF9F0A"
+            else -> "#34C759"
         }
+        (dotView?.background as? GradientDrawable)?.setColor(Color.parseColor(dotColor))
+        micBtn?.let {
+            it.text = when (phase) {
+                Phase.LISTENING -> "⏹  Finish"
+                Phase.PROCESSING -> "⏳  Processing…"
+                Phase.DONE -> "🎙  New recording"
+                else -> "🎙  Start"
+            }
+            val bg = when (phase) {
+                Phase.LISTENING -> Color.parseColor("#FF3B30")
+                Phase.PROCESSING -> Color.parseColor("#FF9F0A")
+                else -> c.accent
+            }
+            (it.background as? GradientDrawable)?.setColor(bg)
+            it.setTextColor(if (phase == Phase.LISTENING || phase == Phase.PROCESSING) Color.WHITE else c.accentFg)
+        }
+        resultBox?.visibility = if (phase == Phase.DONE) View.VISIBLE else View.GONE
+        resultTv?.text = transcript.toString().trim()
     }
 
     // ---------------------------------------------------------------- speech
+    // Flow: Start -> (only a "listening" sign, no words shown) -> Finish -> Processing -> result card.
+
+    private fun setPhase(p: Phase) {
+        phase = p
+        listening = p == Phase.LISTENING
+        refreshListeningUi()
+    }
+
+    private fun now() = SystemClock.elapsedRealtime()
 
     private fun toggleMic() {
-        if (listening) stopListening() else startListening()
+        when (phase) {
+            Phase.LISTENING -> finishListening()
+            Phase.PROCESSING -> {}
+            else -> startListening()
+        }
     }
 
     private fun startListening() {
@@ -450,16 +524,49 @@ class OverlayService : Service() {
             Toast.makeText(this, "Install / enable Google voice typing", Toast.LENGTH_LONG).show()
             return
         }
-        listening = true
-        setPreview("Listening… speak, pause freely")
+        transcript.setLength(0)
+        lastPartial = ""
+        sentenceOpen = true
+        level = 0f
+        startedAt = now()
         muteBeeps()
-        refreshListeningUi()
+        setPhase(Phase.LISTENING)
+        handler.removeCallbacks(tick)
+        handler.post(tick)
         createAndStart(true)
     }
 
-    private fun stopListening() {
-        listening = false
-        handler.removeCallbacksAndMessages(null)
+    // Tap Finish: stop the mic, wait for the last words, then show everything with a Copy button.
+    private fun finishListening() {
+        if (phase != Phase.LISTENING) return
+        setPhase(Phase.PROCESSING)
+        setPreview("⏳ Processing your speech…")
+        handler.removeCallbacks(watchdog)
+        handler.removeCallbacks(tick)
+        if (roundActive) {
+            try {
+                recognizer?.stopListening()
+            } catch (_: Exception) {
+            }
+            handler.postDelayed(finishTimeout, 3000)
+        } else {
+            commitPartial()
+            completeFinish()
+        }
+    }
+
+    private val finishTimeout = Runnable {
+        if (phase == Phase.PROCESSING) {
+            commitPartial()
+            completeFinish()
+        }
+    }
+
+    private fun completeFinish() {
+        handler.removeCallbacks(finishTimeout)
+        handler.removeCallbacks(watchdog)
+        handler.removeCallbacks(tick)
+        roundActive = false
         recognizer?.let {
             try {
                 it.cancel()
@@ -469,10 +576,76 @@ class OverlayService : Service() {
         }
         recognizer = null
         unmuteBeeps()
-        refreshListeningUi()
+        val text = transcript.toString().trim()
+        if (text.isEmpty()) {
+            setPhase(Phase.IDLE)
+            setPreview("Nothing was heard. Check the language, speak closer to the mic, and try again.")
+        } else {
+            copyToClipboard(text)
+            setPhase(Phase.DONE)
+            setPreview("✓ Done. Copied to clipboard. Paste anywhere, or tap Insert.")
+        }
     }
 
-    // The system recognizer beeps every time it (re)starts. Mute those streams while dictating.
+    // Hard stop (service closing, or a setting changed). Discards the recording.
+    private fun stopListening() {
+        handler.removeCallbacks(finishTimeout)
+        handler.removeCallbacks(watchdog)
+        handler.removeCallbacks(tick)
+        roundActive = false
+        lastPartial = ""
+        recognizer?.let {
+            try {
+                it.cancel()
+                it.destroy()
+            } catch (_: Exception) {
+            }
+        }
+        recognizer = null
+        unmuteBeeps()
+        transcript.setLength(0)
+        setPhase(Phase.IDLE)
+    }
+
+    // Shows that the mic is alive (timer + sound level) without showing any words.
+    private val tick = object : Runnable {
+        override fun run() {
+            if (phase != Phase.LISTENING) return
+            val sec = (now() - startedAt) / 1000
+            val bars = "▁▂▃▄▅▆▇"
+            val idx = (level / 10f * (bars.length - 1)).toInt().coerceIn(0, bars.length - 1)
+            setPreview(
+                "● Listening  " + String.format("%02d:%02d", sec / 60, sec % 60) + "  " + bars[idx] +
+                    "\nSpeak freely and pause as you like. Tap Finish when done."
+            )
+            handler.postDelayed(this, 300)
+        }
+    }
+
+    private fun commitChunk(raw: String) {
+        val text = VoiceText.format(raw, Prefs.punctuation(this), sentenceOpen)
+        if (text.isEmpty()) return
+        val t = text.trimEnd()
+        sentenceOpen = t.isEmpty() || t.last() in ".?!" || text.endsWith("\n")
+        if (transcript.isNotEmpty() && !transcript.last().isWhitespace() && text.first() !in ".,?!:;\n") {
+            transcript.append(' ')
+        }
+        transcript.append(text)
+    }
+
+    // If a round ended without a final answer, keep the best partial guess instead of losing words.
+    private fun commitPartial() {
+        val t = lastPartial
+        lastPartial = ""
+        if (t.isNotBlank()) commitChunk(t)
+    }
+
+    private fun copyToClipboard(text: String) {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("OmniVoice", text))
+    }
+
+    // The system recognizer beeps every time it (re)starts. Mute those streams while recording.
     private fun muteBeeps() {
         if (mutedStreams.isNotEmpty()) return
         val am = getSystemService(AUDIO_SERVICE) as AudioManager
@@ -503,13 +676,12 @@ class OverlayService : Service() {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Prefs.LANGS[Prefs.lang(this@OverlayService)].first)
-            // Only finished, checked text is typed (no half-guessed words flickering in).
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Prefs.LANGS[Prefs.lang(this@OverlayService)].first)
+            // Partials are kept silently, only as a safety net so no words are lost between rounds.
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-            // Ask the phone's recognizer to wait through pauses (some phones ignore this).
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             if (Prefs.engine(this@OverlayService) == 1) {
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
@@ -520,6 +692,7 @@ class OverlayService : Service() {
         if (!listening) return
         var sr = recognizer
         if (sr == null || forceNew) {
+            commitPartial()
             sr?.let {
                 try {
                     it.cancel()
@@ -532,15 +705,16 @@ class OverlayService : Service() {
             recognizer = sr
         } else {
             try {
-                sr?.cancel()
+                sr.cancel()
             } catch (_: Exception) {
             }
         }
-        val rec = sr ?: return
-        lastEvent = SystemClock.elapsedRealtime()
+        lastEvent = now()
+        roundActive = true
         try {
-            rec.startListening(buildIntent())
+            sr.startListening(buildIntent())
         } catch (e: Exception) {
+            roundActive = false
             setPreview("Could not start mic: ${e.message}")
             restartSoon(800, true)
         }
@@ -552,12 +726,11 @@ class OverlayService : Service() {
         handler.postDelayed({ if (listening) createAndStart(forceNew) }, delayMs)
     }
 
-    // If the recognizer goes silent (no callbacks at all for 4 s), rebuild it so dictation never just dies.
+    // If the recognizer goes silent (no callbacks at all for 4 s), rebuild it so recording never just dies.
     private val watchdog = object : Runnable {
         override fun run() {
             if (!listening) return
-            if (SystemClock.elapsedRealtime() - lastEvent > 4000) {
-                setPreview("Reconnecting mic…")
+            if (now() - lastEvent > 4000) {
                 createAndStart(true)
             } else {
                 handler.postDelayed(this, 2500)
@@ -567,31 +740,38 @@ class OverlayService : Service() {
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
-            lastEvent = SystemClock.elapsedRealtime()
+            lastEvent = now()
+            roundActive = true
         }
 
         override fun onBeginningOfSpeech() {
-            lastEvent = SystemClock.elapsedRealtime()
+            lastEvent = now()
         }
 
         override fun onRmsChanged(rmsdB: Float) {
-            lastEvent = SystemClock.elapsedRealtime()
+            lastEvent = now()
+            level = level * 0.6f + rmsdB.coerceIn(0f, 10f) * 0.4f
         }
 
         override fun onBufferReceived(buffer: ByteArray?) {}
 
         override fun onEndOfSpeech() {
-            lastEvent = SystemClock.elapsedRealtime()
+            lastEvent = now()
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) {}
 
         override fun onPartialResults(partialResults: Bundle?) {
-            lastEvent = SystemClock.elapsedRealtime()
+            lastEvent = now()
+            val t = partialResults
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()
+            if (!t.isNullOrBlank()) lastPartial = t
         }
 
         override fun onResults(results: Bundle?) {
-            lastEvent = SystemClock.elapsedRealtime()
+            lastEvent = now()
+            roundActive = false
             val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             val conf = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
             var idx = 0
@@ -605,42 +785,41 @@ class OverlayService : Service() {
                 }
             }
             val best = list?.getOrNull(idx)
-            if (!best.isNullOrBlank()) {
-                val text = VoiceText.format(best, Prefs.punctuation(this@OverlayService), sentenceOpen)
-                if (text.isNotEmpty()) {
-                    val t = text.trimEnd()
-                    sentenceOpen = t.isEmpty() || t.last() in ".?!" || text.endsWith("\n")
-                    deliver(text)
-                }
+            lastPartial = ""
+            if (!best.isNullOrBlank()) commitChunk(best)
+            when (phase) {
+                Phase.PROCESSING -> completeFinish()
+                Phase.LISTENING -> restartSoon(20)
+                else -> {}
             }
-            if (listening) restartSoon(20)
         }
 
         override fun onError(error: Int) {
-            lastEvent = SystemClock.elapsedRealtime()
-            if (!listening) return
+            lastEvent = now()
+            roundActive = false
+            // Keep what was heard even when the round ended without a final result.
+            commitPartial()
+            if (phase == Phase.PROCESSING) {
+                completeFinish()
+                return
+            }
+            if (phase != Phase.LISTENING) return
             when (error) {
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                    completeFinish()
                     setPreview("Mic permission missing")
-                    stopListening()
                 }
                 12, 13 -> { // language not supported / unavailable
-                    setPreview("This language is not available offline — switch engine or language")
-                    stopListening()
+                    completeFinish()
+                    setPreview("This language is not available offline. Switch engine or language.")
                 }
                 // Normal pause: nothing heard. Quietly start the next round.
                 SpeechRecognizer.ERROR_NO_MATCH,
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> restartSoon(20)
                 SpeechRecognizer.ERROR_NETWORK,
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
-                    setPreview("Weak internet — retrying (or use Offline engine)")
-                    restartSoon(1200, true)
-                }
+                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> restartSoon(1200, true)
                 // Recognizer got stuck: rebuild it.
-                else -> {
-                    setPreview("Mic restarting (code $error)…")
-                    restartSoon(300, true)
-                }
+                else -> restartSoon(300, true)
             }
         }
     }
@@ -679,5 +858,15 @@ class OverlayService : Service() {
                 typeHandler.postDelayed(this, 1200L)
             }
         }
+    }
+}
+
+// ScrollView that grows with its text but never taller than maxPx.
+private class MaxHeightScroll(ctx: android.content.Context, private val maxPx: Int) : ScrollView(ctx) {
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(
+            widthMeasureSpec,
+            View.MeasureSpec.makeMeasureSpec(maxPx, View.MeasureSpec.AT_MOST)
+        )
     }
 }
