@@ -75,7 +75,13 @@ class OverlayService : Service() {
     private var lastEvent = 0L
     private enum class Phase { IDLE, LISTENING, PROCESSING, DONE }
     private var phase = Phase.IDLE
-    private val transcript = StringBuilder()
+    private val transcript = StringBuilder() // polished final text
+    private val chunks = mutableListOf<Chunk>()
+    private var rawText = ""
+    private var showRaw = false
+    private var roundBeginAt = 0L
+    private var roundEndAt = 0L
+    private var prevEndAt = 0L
     private var lastPartial = ""
     private var roundActive = false
     private var startedAt = 0L
@@ -353,24 +359,37 @@ class OverlayService : Service() {
         }
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         btnRow.addView(pill("📋 Copy", c.accent, c.accentFg, 12f) {
-            val t = transcript.toString().trim()
+            val t = shownText()
             if (t.isNotEmpty()) {
                 copyToClipboard(t)
                 Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
             }
         }, rowLp(6))
         btnRow.addView(pill("⌨ Insert", c.subtle, c.text, 12f) {
-            val t = transcript.toString().trim()
+            val t = shownText()
             if (t.isNotEmpty()) deliver(t)
         }, rowLp(6))
         btnRow.addView(pill("🗑 Clear", c.subtle, c.text, 12f) {
             transcript.setLength(0)
+            chunks.clear()
+            rawText = ""
+            showRaw = false
             setPhase(Phase.IDLE)
             setPreview("Ready. Tap Start.")
         }, rowLp(0))
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(scroll, lp(0))
         box.addView(btnRow, lp(6))
+        var toggleBtn: TextView? = null
+        toggleBtn = pill(
+            if (showRaw) "📝 Original · tap for polished" else "✨ Polished · tap for original",
+            c.subtle, c.sub, 11f
+        ) {
+            showRaw = !showRaw
+            toggleBtn?.text = if (showRaw) "📝 Original · tap for polished" else "✨ Polished · tap for original"
+            resultTv?.text = shownText()
+        }
+        box.addView(toggleBtn, lp(6))
         resultBox = box
         drawer.addView(box, lp(8))
 
@@ -492,11 +511,13 @@ class OverlayService : Service() {
             it.setTextColor(if (phase == Phase.LISTENING || phase == Phase.PROCESSING) Color.WHITE else c.accentFg)
         }
         resultBox?.visibility = if (phase == Phase.DONE) View.VISIBLE else View.GONE
-        resultTv?.text = transcript.toString().trim()
+        resultTv?.text = shownText()
     }
 
     // ---------------------------------------------------------------- speech
     // Flow: Start -> (only a "listening" sign, no words shown) -> Finish -> Processing -> result card.
+
+    private fun shownText(): String = (if (showRaw) rawText else transcript.toString()).trim()
 
     private fun setPhase(p: Phase) {
         phase = p
@@ -525,6 +546,12 @@ class OverlayService : Service() {
             return
         }
         transcript.setLength(0)
+        chunks.clear()
+        rawText = ""
+        showRaw = false
+        roundBeginAt = 0L
+        roundEndAt = 0L
+        prevEndAt = 0L
         lastPartial = ""
         sentenceOpen = true
         level = 0f
@@ -576,7 +603,11 @@ class OverlayService : Service() {
         }
         recognizer = null
         unmuteBeeps()
-        val text = transcript.toString().trim()
+        rawText = chunks.joinToString(" ") { it.text }.trim()
+        val polished = if (chunks.isEmpty()) "" else TextPolish.polish(chunks, Prefs.LANGS[Prefs.lang(this)].first)
+        transcript.setLength(0)
+        transcript.append(polished)
+        val text = polished.trim()
         if (text.isEmpty()) {
             setPhase(Phase.IDLE)
             setPreview("Nothing was heard. Check the language, speak closer to the mic, and try again.")
@@ -604,6 +635,8 @@ class OverlayService : Service() {
         recognizer = null
         unmuteBeeps()
         transcript.setLength(0)
+        chunks.clear()
+        rawText = ""
         setPhase(Phase.IDLE)
     }
 
@@ -622,15 +655,16 @@ class OverlayService : Service() {
         }
     }
 
+    // Stores the raw piece together with the silence before it. Punctuation is added after Finish.
     private fun commitChunk(raw: String) {
-        val text = VoiceText.format(raw, Prefs.punctuation(this), sentenceOpen)
+        val text = VoiceText.format(raw, Prefs.punctuation(this), false)
         if (text.isEmpty()) return
-        val t = text.trimEnd()
-        sentenceOpen = t.isEmpty() || t.last() in ".?!" || text.endsWith("\n")
-        if (transcript.isNotEmpty() && !transcript.last().isWhitespace() && text.first() !in ".,?!:;\n") {
-            transcript.append(' ')
-        }
-        transcript.append(text)
+        val end = if (roundEndAt > 0) roundEndAt else now()
+        val gap = if (prevEndAt > 0 && roundBeginAt > 0) (roundBeginAt - prevEndAt).coerceAtLeast(0L) else 0L
+        chunks.add(Chunk(text, gap))
+        prevEndAt = end
+        roundBeginAt = 0L
+        roundEndAt = 0L
     }
 
     // If a round ended without a final answer, keep the best partial guess instead of losing words.
@@ -680,6 +714,10 @@ class OverlayService : Service() {
             // Partials are kept silently, only as a safety net so no words are lost between rounds.
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            if (Build.VERSION.SDK_INT >= 33) {
+                // Ask Google's recognizer to add punctuation/formatting itself where it supports it.
+                putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY)
+            }
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 20000L)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
@@ -748,6 +786,7 @@ class OverlayService : Service() {
 
         override fun onBeginningOfSpeech() {
             lastEvent = now()
+            if (roundBeginAt == 0L) roundBeginAt = now()
         }
 
         override fun onRmsChanged(rmsdB: Float) {
@@ -759,6 +798,7 @@ class OverlayService : Service() {
 
         override fun onEndOfSpeech() {
             lastEvent = now()
+            roundEndAt = now()
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -801,6 +841,8 @@ class OverlayService : Service() {
             roundActive = false
             // Keep what was heard even when the round ended without a final result.
             commitPartial()
+            roundBeginAt = 0L
+            roundEndAt = 0L
             if (phase == Phase.PROCESSING) {
                 completeFinish()
                 return

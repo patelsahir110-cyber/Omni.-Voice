@@ -10,7 +10,8 @@ object VoiceText {
         Regex("\\bcolon\\b", RegexOption.IGNORE_CASE) to ":",
         Regex("\\bsemicolon\\b", RegexOption.IGNORE_CASE) to ";",
         Regex("\\b(new line|next line)\\b", RegexOption.IGNORE_CASE) to "\n",
-        Regex("\\bnew paragraph\\b", RegexOption.IGNORE_CASE) to "\n\n"
+        Regex("\\bnew paragraph\\b", RegexOption.IGNORE_CASE) to "\n\n",
+        Regex("\\b(bullet point|next point)\\b", RegexOption.IGNORE_CASE) to "\n• "
     )
 
     private val SPACE_BEFORE_PUNCT = Regex("\\s+([.,?!:;])")
